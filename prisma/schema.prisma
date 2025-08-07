@@ -1,0 +1,312 @@
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-1.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  PROVIDER
+  VENDOR
+  ADMIN
+}
+
+enum BookingStatus {
+  PENDING
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum EmergencyStatus {
+  ACTIVE
+  RESOLVED
+  FALSE_ALARM
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  phone             String    @unique
+  name              String
+  profileImage      String?
+  role              UserRole  @default(CUSTOMER)
+  isEmailVerified   Boolean   @default(false)
+  isPhoneVerified   Boolean   @default(false)
+  latitude          Float?
+  longitude         Float?
+  address           String?
+  city              String?
+  country           String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  password          String?
+
+  wallet            Wallet?
+  provider          Provider?
+  vendor            Vendor?
+  bookingsAsCustomer Booking[] @relation("CustomerBookings")
+  bookingsAsProvider Booking[] @relation("ProviderBookings")
+  reviews           Review[]
+  emergencyContacts EmergencyContact[]
+  emergencyAlerts   EmergencyAlert[]
+  orders            Order[]
+  transactions      Transaction[]
+  notifications     Notification[]
+
+  @@map("users")
+}
+
+model Wallet {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  balance         Float     @default(0)
+  escrowBalance   Float     @default(0)
+  totalEarnings   Float     @default(0)
+  totalSpent      Float     @default(0)
+  isBlocked       Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions    Transaction[]
+
+  @@map("wallets")
+}
+
+model Provider {
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  bio               String?
+  availability      Boolean   @default(true)
+  serviceCategories String[]
+  experience        String?
+  hourlyRate        Float?
+  rating            Float     @default(0)
+  totalJobs         Int       @default(0)
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  licenseNumber     String?
+  licenseImage      String?
+  idDocument        String?
+  businessRegistration String?
+  faceVerification  String?
+  isBlueTickVerified Boolean  @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookings          Booking[] @relation("ProviderBookings")
+  reviews           Review[]  @relation("ProviderReviews")
+
+  @@map("providers")
+}
+
+model Service {
+  id              String    @id @default(cuid())
+  name            String
+  category        String
+  subcategory     String?
+  description     String?
+  basePrice       Float
+  priceUnit       String
+  icon            String?
+  isEmergency     Boolean   @default(false)
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  bookings        Booking[]
+
+  @@map("services")
+}
+
+model Booking {
+  id                String    @id @default(cuid())
+  customerId        String
+  providerId        String?
+  serviceId         String
+  title             String
+  description       String?
+  scheduledAt       DateTime?
+  completedAt       DateTime?
+  isUrgent          Boolean   @default(false)
+  estimatedPrice    Float?
+  finalPrice        Float?
+  commission        Float?
+  status            BookingStatus @default(PENDING)
+  paymentStatus     PaymentStatus @default(PENDING)
+  
+  pickupLatitude    Float?
+  pickupLongitude   Float?
+  pickupAddress     String?
+  dropoffLatitude   Float?
+  dropoffLongitude  Float?
+  dropoffAddress    String?
+  
+  chatRoomId        String?
+  isLocationSharing Boolean   @default(false)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  customer          User      @relation("CustomerBookings", fields: [customerId], references: [id])
+  provider          User?     @relation("ProviderBookings", fields: [providerId], references: [id])
+  service           Service   @relation(fields: [serviceId], references: [id])
+  review            Review?
+
+  @@map("bookings")
+}
+
+model Review {
+  id              String    @id @default(cuid())
+  customerId      String
+  providerId      String?
+  bookingId       String?   @unique
+  rating          Int
+  comment         String?
+  isAnonymous     Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+
+  customer        User      @relation(fields: [customerId], references: [id])
+  provider        Provider? @relation("ProviderReviews", fields: [providerId], references: [id])
+  booking         Booking?  @relation(fields: [bookingId], references: [id])
+
+  @@map("reviews")
+}
+
+model Transaction {
+  id              String    @id @default(cuid())
+  userId          String
+  walletId        String
+  type            String
+  amount          Float
+  description     String
+  reference       String?
+  status          PaymentStatus @default(COMPLETED)
+  metadata        Json?
+  createdAt       DateTime  @default(now())
+
+  user            User      @relation(fields: [userId], references: [id])
+  wallet          Wallet    @relation(fields: [walletId], references: [id])
+
+  @@map("transactions")
+}
+
+model EmergencyContact {
+  id              String    @id @default(cuid())
+  userId          String
+  name            String
+  phone           String
+  email           String?
+  relationship    String
+  isPrimary       Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("emergency_contacts")
+}
+
+model EmergencyAlert {
+  id              String    @id @default(cuid())
+  userId          String
+  latitude        Float
+  longitude       Float
+  address         String?
+  status          EmergencyStatus @default(ACTIVE)
+  resolvedAt      DateTime?
+  notifiedContacts String[]
+  adminNotes      String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id])
+
+  @@map("emergency_alerts")
+}
+
+model Notification {
+  id              String    @id @default(cuid())
+  userId          String
+  title           String
+  message         String
+  type            String
+  isRead          Boolean   @default(false)
+  data            Json?
+  createdAt       DateTime  @default(now())
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model Vendor {
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  businessName      String
+  businessType      String
+  businessAddress   String?
+  businessPhone     String?
+  businessEmail     String?
+  businessLicense   String?
+  rating            Float     @default(0)
+  totalSales        Float     @default(0)
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders            Order[]
+
+  @@map("vendors")
+}
+
+model Order {
+  id              String    @id @default(cuid())
+  customerId      String
+  vendorId        String
+  orderNumber     String    @unique
+  subtotal        Float
+  tax             Float     @default(0)
+  delivery        Float     @default(0)
+  total           Float
+  commission      Float     @default(0)
+  paymentMethod   String
+  paymentStatus   PaymentStatus @default(PENDING)
+  status          String    @default("pending")
+  
+  deliveryAddress String
+  deliveryLat     Float?
+  deliveryLng     Float?
+  deliveryDate    DateTime?
+  trackingNumber  String?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  customer        User      @relation(fields: [customerId], references: [id])
+  vendor          Vendor    @relation(fields: [vendorId], references: [id])
+
+  @@map("orders")
+}
